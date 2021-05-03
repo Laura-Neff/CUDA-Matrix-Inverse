@@ -177,7 +177,7 @@ int main(int argc, char *argv[])
                 (start_time.tv_sec*1000000 + start_time.tv_usec);
    printf("Elasped time = %d micro secs\n", elapsed);
 
-   if ( N <= 5 )
+   if ( N <= 40 )
    {
       printf("Matrix A:\n");
       printMatrix( A_org, N );

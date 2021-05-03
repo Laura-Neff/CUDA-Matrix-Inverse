@@ -59,59 +59,41 @@ void printMatrixPair( float *A, float *C, int n )
                   contains the inverse of A
               N = #row (and # columns) in A and C
    ======================================================================== */
-__global__
-void inverse( float *A, float *C, int N)
+__global__ void inverse( float *A, float *C, int N)
 {
-
-// int T = threadIdx.x;
-int T = threadIdx.y; //thread columns
-
-for (int i = 0; i < N; i++){
-   float factor = A[i * N + i];
-
-
-   A[i*N+T] = A[i*N+T]/factor;  
-   C[i*N+T] = C[i*N+T]/factor; 
-
-   for (int j = 0; j < N; j++)
-     {
-        if (j == i)
+        /* ==========================================================
+           R = a variable that goes through each row of the matrix
+           ========================================================== */
+        printf("block id (%d, %d), thread id (%d, %d)\n",blockIdx.x, blockIdx.y, threadIdx.x,threadIdx.y);
+        for (int R = 0; R < N; R++)
         {
-           // Do nothing to row "R"
-        }
-        else
+        float factor = A[R*N + R];	// Use A[R][R] as multiply factor
+    
+        int j = threadIdx.x;
+        A[R*N+j] = A[R*N+j]/factor;
+        C[R*N+j] = C[R*N+j]/factor;
+    
+        /* =========================================================
+            Make a column of 0 values in column R using the row "R"
+            ========================================================= */
+        for (int i = 0; i < N; i++)
         {
-           float f = A[j*N+i];		// Multiply factor
-
-           /* -------------------------------------
-              Add  -f*row(R) to row(i) 
-              ------------------------------------- */
-           for (int k = 0; k < N; k++)
-           {
-              A[j*N+k] = A[j*N+k] - f*A[i*N+k];
-              C[j*N+k] = C[j*N+k] - f*C[i*N+k];
-           }
-
+            if (i == R)
+            {
+                // Do nothing to row "R"
+            }
+            else
+            {
+                float f = A[i*N+R];		// Multiply factor
+                /* -------------------------------------
+                Add  -f*row(R) to row(i) 
+                ------------------------------------- */
+                A[i*N+j] = A[i*N+j] - f*A[R*N+j];
+                C[i*N+j] = C[i*N+j] - f*C[R*N+j];
+            }
         }
-     }
-   
-
-
-
-}
-
-   
-
-
-
-
-   
-   // A[i][T] = A[i][T]/A[i][i];
-   // C[i][T] = C[i][T]/A[i][i];
-
-   // T -= A[T][i]*i;
-
-
+    }
+      
 }
 
  
@@ -223,7 +205,7 @@ int main(int argc, char *argv[])
                 (start_time.tv_sec*1000000 + start_time.tv_usec);
    printf("Elasped time = %d micro secs\n", elapsed);
 
-   if ( N <= 5 )
+   if ( N <= 40 )
    {
       printf("Matrix A:\n");
       printMatrix( A_org, N );
