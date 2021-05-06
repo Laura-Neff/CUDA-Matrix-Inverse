@@ -1,7 +1,17 @@
 
-#include <stdio.h>
+#include <stdio.h> //file i/o commands
 #include <stdlib.h>
 #include <math.h>
+#include <sys/stat.h> //checking file types of file descriptors
+#include <sys/types.h> //fstat, other file i/o, wait
+#include <sys/resource.h> //for wait
+#include <sys/wait.h> //for eait
+#include <getopt.h> //for getopt
+#include <unistd.h> //pipe command, parsing command line stuff, pause, forking
+#include <stdlib.h> //malloc and stuff
+#include <errno.h> //for the errno checking
+#include <fcntl.h> //for O_CONSTANTS
+#include <string.h> //fprintf, etc.
 
 #include <sys/time.h>
 struct timeval start_time, stop_time;
@@ -64,36 +74,38 @@ __global__ void inverse( float *A, float *C, int N)
         /* ==========================================================
            R = a variable that goes through each row of the matrix
            ========================================================== */
+        
         printf("block id (%d, %d), thread id (%d, %d)\n",blockIdx.x, blockIdx.y, threadIdx.x,threadIdx.y);
-        for (int R = 0; R < N; R++)
-        {
-        float factor = A[R*N + R];	// Use A[R][R] as multiply factor
-    
-        int j = threadIdx.x;
-        A[R*N+j] = A[R*N+j]/factor;
-        C[R*N+j] = C[R*N+j]/factor;
-    
-        /* =========================================================
-            Make a column of 0 values in column R using the row "R"
-            ========================================================= */
-        for (int i = 0; i < N; i++)
-        {
-            if (i == R)
-            {
-                // Do nothing to row "R"
-            }
-            else
-            {
-                float f = A[i*N+R];		// Multiply factor
-                /* -------------------------------------
-                Add  -f*row(R) to row(i) 
-                ------------------------------------- */
-                A[i*N+j] = A[i*N+j] - f*A[R*N+j];
-                C[i*N+j] = C[i*N+j] - f*C[R*N+j];
-            }
-        }
-    }
+         for (int R = 0; R < N; R++)
+         {
+         float factor = A[R*N + R];	// Divide each element by A(R,R) i.e. the diagonal 
       
+         int col = threadIdx.x;
+         
+         A[R*N+col] = A[R*N+col]/factor; //divide A(:,col) by its diagonal
+         C[R*N+col] = C[R*N+col]/factor; 
+      
+         /* =========================================================
+               Make a column of 0 values in column R using the row "R"
+               ========================================================= */
+         for (int T = 0; T < N; T++)
+         {
+               if (T == R)
+               {
+                  // Do nothing to row "R"
+               }
+               else
+               {
+                  // Multiply factor: A[T][R] == A(T,R)
+                  float f = A[T*N+R];		
+                  /* -------------------------------------
+                  Add  -f*row(R) to row(i) 
+                  ------------------------------------- */
+                  A[T*N+col] -= f*A[R*N+col]; //add -A[T,R]*A[R,col] to A[T,col]
+                  C[T*N+col] -= f*C[R*N+col];
+               }
+         }
+      }
 }
 
  
@@ -179,12 +191,15 @@ int main(int argc, char *argv[])
            C[i*N+j] = 0.0;
      }
 
-  if ( N <= 5 )
-  {
-     printf("Input matrix:\n");
-     printMatrix( A, N );
-     printf("\n");
-  }
+   printf("Input matrix: printing to input.txt\n");
+   fflush(stdout);
+   remove("input.txt");
+   int fp = open("input.txt",O_WRONLY|O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+   dup2(1,5); //copy stdout to a new fp
+   dup2(fp,1); //copy fp into stdout
+   printMatrix( A, N );
+   dup2(5,1); //get rid of stdout
+   close(fp); //close the file pointer
 
   gettimeofday(&start_time, NULL);   // Record current sys time as start_time
   /* ========================================================
@@ -205,17 +220,25 @@ int main(int argc, char *argv[])
                 (start_time.tv_sec*1000000 + start_time.tv_usec);
    printf("Elasped time = %d micro secs\n", elapsed);
 
-   if ( N <= 40 )
-   {
-      printf("Matrix A:\n");
-      printMatrix( A_org, N );
-      printf("\n\nInverse Matrix:\n");
-      printMatrix( C, N );
-   }
-   else
-   {
-      printf("N > 5; skip printing...\n");
-   }
+   printf("Matrix A: printing to A_after.txt\n");
+   fflush(stdout);
+   remove("A_after.txt");
+   fp = open("A_after.txt",O_WRONLY|O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+   dup2(1,5); //copy stdout to a new fp
+   dup2(fp,1); //copy fp into stdout
+   printMatrix( A_org, N );
+   dup2(5,1); //get rid of stdout
+   close(fp); //close the file pointer
+
+   printf("Inverse matrix: printing to inverse_mat.txt\n");
+   fflush(stdout);
+   remove("inverse_mat.txt");
+   fp = open("inverse_mat.txt",O_WRONLY|O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+   dup2(1,5); //copy stdout to a new fp
+   dup2(fp,1); //copy fp into stdout
+   printMatrix( C, N );
+   dup2(5,1); //get rid of stdout
+   close(fp); //close the file pointer
 
    /* ====================================================
       Check if inverse is correct
